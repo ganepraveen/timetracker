@@ -89,8 +89,11 @@
                 </div>
             </div>
 
-            <div class="mt-4 text-center text-gray-500">
+            <div class="mt-4 text-center text-gray-500 flex flex-col items-center">
                 <p id="todayDate" class="font-medium text-sm"></p>
+                <div id="todayTracker" class="mt-2 text-lg font-bold text-gray-700">
+                    Today's Hours: <span id="todayHoursLive" class="text-blue-600">0.00</span>
+                </div>
             </div>
 
             <!-- Real-time Tracker Buttons -->
@@ -152,6 +155,7 @@
         const WEEKLY_LIMIT_HOURS = 20;
         let userId = null;
         let allEntries = {}; // Store all entries from Firestore
+        let liveTimerInterval = null; // Store the interval ID for the live timer
 
         const loadingSpinner = document.getElementById('loadingSpinner');
         const authContainer = document.getElementById('authContainer');
@@ -171,6 +175,7 @@
         const todayDateDisplay = document.getElementById('todayDate');
         const clockInBtn = document.getElementById('clockInBtn');
         const clockOutBtn = document.getElementById('clockOutBtn');
+        const todayHoursLiveDisplay = document.getElementById('todayHoursLive');
         
         function showMessage(message, type = 'success') {
             messageBox.textContent = message;
@@ -183,6 +188,26 @@
         function showDashboard(show) {
             authContainer.classList.toggle('hidden', show);
             dashboardContainer.classList.toggle('hidden', !show);
+        }
+
+        function startLiveTimer(lastClockInTimestamp) {
+            if (liveTimerInterval) {
+                clearInterval(liveTimerInterval);
+            }
+            liveTimerInterval = setInterval(() => {
+                const now = new Date().getTime();
+                const diffInMilliseconds = now - lastClockInTimestamp;
+                const hours = diffInMilliseconds / (1000 * 60 * 60);
+                todayHoursLiveDisplay.textContent = hours.toFixed(2);
+            }, 1000); // Update every second
+        }
+
+        function stopLiveTimer() {
+            if (liveTimerInterval) {
+                clearInterval(liveTimerInterval);
+                liveTimerInterval = null;
+            }
+            todayHoursLiveDisplay.textContent = '0.00';
         }
         
         // Gets the date of the most recent Wednesday, including the current day.
@@ -231,33 +256,48 @@
                     const sortedDates = Object.keys(allEntries).sort((a, b) => new Date(b) - new Date(a));
                     
                     const renderedEntries = [];
+                    let lastClockIn = null;
+                    let lastStatus = null;
+                    let todayTotalHours = 0;
+                    
                     sortedDates.forEach(date => {
                         const dayEntries = allEntries[date].sort((a, b) => a.timestamp.toDate() - b.timestamp.toDate());
                         
                         let totalDailyHours = 0;
-                        let lastClockIn = null;
-                        let lastStatus = null;
+                        let dayLastClockIn = null;
+                        let dayLastStatus = null;
                         
                         dayEntries.forEach(entry => {
-                            if (lastStatus === null) {
+                            if (dayLastStatus === null) {
                                 // First entry of the day
-                                lastStatus = entry.type;
+                                dayLastStatus = entry.type;
                                 if (entry.type === 'clock-in') {
-                                    lastClockIn = entry.timestamp.toDate();
+                                    dayLastClockIn = entry.timestamp.toDate();
                                 }
-                            } else if (lastStatus === 'clock-in' && entry.type === 'clock-out') {
+                            } else if (dayLastStatus === 'clock-in' && entry.type === 'clock-out') {
                                 // A valid work period
                                 const clockOutTime = entry.timestamp.toDate();
-                                const diffInMilliseconds = clockOutTime - lastClockIn;
+                                const diffInMilliseconds = clockOutTime - dayLastClockIn;
                                 totalDailyHours += diffInMilliseconds / (1000 * 60 * 60);
-                                lastStatus = 'clock-out';
-                            } else if (lastStatus === 'clock-out' && entry.type === 'clock-in') {
+                                dayLastStatus = 'clock-out';
+                            } else if (dayLastStatus === 'clock-out' && entry.type === 'clock-in') {
                                 // Another shift started
-                                lastClockIn = entry.timestamp.toDate();
-                                lastStatus = 'clock-in';
+                                dayLastClockIn = entry.timestamp.toDate();
+                                dayLastStatus = 'clock-in';
                             }
                         });
-        
+                        
+                        // Check if this is the most recent day and update live timer based on its status
+                        if (new Date(date).toLocaleDateString('en-US') === new Date().toLocaleDateString('en-US')) {
+                             todayTotalHours = totalDailyHours;
+                             if (dayLastStatus === 'clock-in') {
+                                startLiveTimer(dayLastClockIn.getTime());
+                             } else {
+                                stopLiveTimer();
+                                todayHoursLiveDisplay.textContent = todayTotalHours.toFixed(2);
+                             }
+                        }
+                        
                         const entryDate = new Date(date);
                         if (entryDate >= weeklyStartDate && entryDate <= weeklyEndDate) {
                             totalWeeklyHours += totalDailyHours;
@@ -303,6 +343,7 @@
                         clockInBtn.classList.remove('bg-blue-400');
                         clockOutBtn.classList.add('bg-blue-400');
                         clockOutBtn.classList.remove('bg-blue-600', 'hover:bg-blue-700');
+                        stopLiveTimer();
                     }
                 });
         
@@ -398,6 +439,7 @@
 
         logoutBtn.addEventListener('click', async () => {
             try {
+                stopLiveTimer();
                 await signOut(auth);
                 showMessage("Logged out successfully!");
             } catch (error) {
