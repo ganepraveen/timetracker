@@ -46,8 +46,26 @@
 </head>
 <body class="bg-gray-100 flex items-center justify-center min-h-screen p-4">
 
+    <!-- Loading Spinner -->
+    <div id="loadingSpinner" class="hidden flex flex-col items-center">
+        <div class="animate-spin rounded-full h-16 w-16 border-t-2 border-b-2 border-blue-500"></div>
+        <p class="mt-4 text-gray-600">Loading...</p>
+    </div>
+
+    <!-- Login/Signup Container -->
+    <div id="authContainer" class="w-full max-w-sm bg-white p-8 rounded-xl shadow-lg">
+        <h2 class="text-3xl font-bold text-center text-gray-800 mb-6">Time Tracker</h2>
+        <p class="text-center text-gray-500 mb-8">Sign in or create an account to get started.</p>
+        <form id="authForm" class="space-y-4">
+            <input type="email" id="emailInput" placeholder="Email" class="w-full p-4 border rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500" required>
+            <input type="password" id="passwordInput" placeholder="Password" class="w-full p-4 border rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500" required>
+            <button type="submit" id="submitBtn" class="w-full bg-blue-600 text-white py-4 rounded-lg text-lg font-semibold hover:bg-blue-700 transition duration-300">Sign In</button>
+            <button type="button" id="signUpToggleBtn" class="w-full text-blue-600 py-2 text-sm font-medium hover:text-blue-700">Need an account? Sign Up</button>
+        </form>
+    </div>
+
     <!-- Main Dashboard Container -->
-    <div class="w-full max-w-4xl bg-white p-6 md:p-10 rounded-xl shadow-lg flex flex-col md:flex-row gap-8 mobile-layout">
+    <div id="dashboardContainer" class="hidden w-full max-w-4xl bg-white p-6 md:p-10 rounded-xl shadow-lg flex flex-col md:flex-row gap-8 mobile-layout">
         <!-- Main Info Section (Left) -->
         <div class="md:w-1/2 w-full flex flex-col gap-6 section-container">
             <h1 class="text-3xl md:text-4xl font-bold text-gray-800">Time Tracker Dashboard</h1>
@@ -85,6 +103,9 @@
                     <button id="clockOutBtn" class="w-full bg-blue-400 text-white py-4 rounded-md text-lg font-semibold hover:bg-blue-500 transition duration-300 shadow-md" disabled>
                         Clock Out
                     </button>
+                    <button id="logoutBtn" class="mt-4 w-full bg-red-500 text-white py-2 rounded-md text-sm font-semibold hover:bg-red-600 transition duration-300">
+                        Log Out
+                    </button>
                 </div>
             </div>
         </div>
@@ -104,24 +125,24 @@
 
     <script type="module">
         import { initializeApp } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-app.js";
-        import { getAuth, signInAnonymously, onAuthStateChanged } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-auth.js";
-        import { getFirestore, doc, deleteDoc, onSnapshot, collection, addDoc, setLogLevel } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-firestore.js";
-
+        import { getAuth, signInWithEmailAndPassword, createUserWithEmailAndPassword, onAuthStateChanged, signOut } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-auth.js";
+        import { getFirestore, doc, deleteDoc, onSnapshot, collection, addDoc, setLogLevel, Timestamp } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-firestore.js";
+        
         // Set Firebase logging level to debug
         setLogLevel('Debug');
         
         // --- IMPORTANT: REPLACE WITH YOUR FIREBASE CONFIGURATION ---
         // Get this from your Firebase project settings in the console.
         const firebaseConfig = {
-			  apiKey: "AIzaSyAWCdyc1ICphxVin-Ps9-ecU3_kKJFUKHs",
-			  authDomain: "time-tracker-da677.firebaseapp.com",
-			  projectId: "time-tracker-da677",
-			  storageBucket: "time-tracker-da677.firebasestorage.app",
-			  messagingSenderId: "759776821855",
-			  appId: "1:759776821855:web:540422c3118dde613851ea",
-			  measurementId: "G-FZPX1GPGL8"
-			};
-        const appId = firebaseConfig.appId;
+            apiKey: "AIzaSyAWCdyc1ICphxVin-Ps9-ecU3_kKJFUKHs",
+            authDomain: "time-tracker-da677.firebaseapp.com",
+            projectId: "time-tracker-da677",
+            storageBucket: "time-tracker-da677.firebasestorage.app",
+            messagingSenderId: "759776821855",
+            appId: "1:759776821855:web:540422c3118dde613851ea",
+            measurementId: "G-FZPX1GPGL8"
+        };
+        const appId = typeof __app_id !== 'undefined' ? __app_id : 'default-app-id';
         // -------------------------------------------------------------
         
         const app = initializeApp(firebaseConfig);
@@ -132,6 +153,15 @@
         let userId = null;
         let allEntries = {}; // Store all entries from Firestore
 
+        const loadingSpinner = document.getElementById('loadingSpinner');
+        const authContainer = document.getElementById('authContainer');
+        const dashboardContainer = document.getElementById('dashboardContainer');
+        const emailInput = document.getElementById('emailInput');
+        const passwordInput = document.getElementById('passwordInput');
+        const submitBtn = document.getElementById('submitBtn');
+        const signUpToggleBtn = document.getElementById('signUpToggleBtn');
+        const logoutBtn = document.getElementById('logoutBtn');
+        
         const userIdDisplay = document.getElementById('userIdDisplay');
         const weeklyTotalDisplay = document.getElementById('weeklyTotal');
         const hoursRemainingDisplay = document.getElementById('hoursRemaining');
@@ -141,7 +171,7 @@
         const todayDateDisplay = document.getElementById('todayDate');
         const clockInBtn = document.getElementById('clockInBtn');
         const clockOutBtn = document.getElementById('clockOutBtn');
-
+        
         function showMessage(message, type = 'success') {
             messageBox.textContent = message;
             messageBox.className = `message-box show ${type === 'success' ? 'bg-green-200 text-green-800' : 'bg-red-200 text-red-800'}`;
@@ -149,7 +179,12 @@
                 messageBox.classList.remove('show');
             }, 3000);
         }
-
+        
+        function showDashboard(show) {
+            authContainer.classList.toggle('hidden', show);
+            dashboardContainer.classList.toggle('hidden', !show);
+        }
+        
         // Gets the date of the most recent Wednesday, including the current day.
         function getWeeklyStartDate(currentDate) {
             const date = new Date(currentDate);
@@ -159,23 +194,25 @@
             date.setHours(0, 0, 0, 0);
             return date;
         }
-
+        
         onAuthStateChanged(auth, async (user) => {
             if (user) {
+                // User is signed in, show the dashboard
                 userId = user.uid;
                 userIdDisplay.textContent = userId;
-                
+                showDashboard(true);
+        
                 const today = new Date();
                 todayDateDisplay.textContent = today.toLocaleDateString('en-US', { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' });
-
+        
                 const userTimeEntriesRef = collection(db, `artifacts/${appId}/users/${userId}/time_entries`);
-
+        
                 onSnapshot(userTimeEntriesRef, (snapshot) => {
                     const weeklyStartDate = getWeeklyStartDate(new Date());
                     const weeklyEndDate = new Date(weeklyStartDate);
                     weeklyEndDate.setDate(weeklyEndDate.getDate() + 6);
                     weeklyEndDate.setHours(23, 59, 59, 999);
-
+        
                     const startDateString = weeklyStartDate.toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
                     const endDateString = weeklyEndDate.toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
                     weeklyDateRangeDisplay.textContent = `${startDateString} - ${endDateString}`;
@@ -189,7 +226,7 @@
                         }
                         allEntries[entryDate].push({ id: doc.id, ...data });
                     });
-
+        
                     let totalWeeklyHours = 0;
                     const sortedDates = Object.keys(allEntries).sort((a, b) => new Date(b) - new Date(a));
                     
@@ -220,12 +257,12 @@
                                 lastStatus = 'clock-in';
                             }
                         });
-
+        
                         const entryDate = new Date(date);
                         if (entryDate >= weeklyStartDate && entryDate <= weeklyEndDate) {
                             totalWeeklyHours += totalDailyHours;
                         }
-
+        
                         renderedEntries.push({ date, totalDailyHours, entries: dayEntries });
                     });
                     
@@ -243,7 +280,7 @@
                     
                     renderEntries(renderedEntries);
                 });
-
+        
                 // Check for last entry to set button state
                 const dailyEntriesRef = collection(db, `artifacts/${appId}/users/${userId}/time_entries`);
                 onSnapshot(dailyEntriesRef, (snapshot) => {
@@ -268,35 +305,31 @@
                         clockOutBtn.classList.remove('bg-blue-600', 'hover:bg-blue-700');
                     }
                 });
-
+        
             } else {
-                try {
-                    await signInAnonymously(auth);
-                } catch (error) {
-                    console.error("Error signing in anonymously:", error);
-                    showMessage("Authentication failed. Please try again.", "error");
-                }
+                // User is signed out, show the auth container
+                showDashboard(false);
             }
         });
-
+        
         function renderEntries(dailyEntries) {
             entriesList.innerHTML = ''; // Clear the list
             if (dailyEntries.length === 0) {
                 entriesList.innerHTML = `<p class="text-gray-500 text-center py-8">No entries found. Clock in to get started.</p>`;
                 return;
             }
-
+        
             dailyEntries.forEach(dayEntry => {
                 const dateHeader = document.createElement('h3');
                 dateHeader.className = "text-md font-semibold text-gray-700 mt-4 mb-2 border-b pb-2";
                 dateHeader.textContent = new Date(dayEntry.date).toLocaleDateString('en-US', { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' });
                 entriesList.appendChild(dateHeader);
-
+        
                 const totalHoursElement = document.createElement('div');
                 totalHoursElement.className = "flex justify-between items-center text-sm font-medium text-gray-600 mb-2";
                 totalHoursElement.innerHTML = `<span>Total Hours:</span> <span class="font-bold text-gray-800">${dayEntry.totalDailyHours.toFixed(2)}</span>`;
                 entriesList.appendChild(totalHoursElement);
-
+        
                 dayEntry.entries.forEach(entry => {
                     const entryElement = document.createElement('div');
                     entryElement.className = "bg-gray-100 p-3 rounded-md flex justify-between items-center text-sm";
@@ -304,7 +337,7 @@
                     const time = entry.timestamp.toDate().toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit', hour12: true });
                     const typeText = entry.type === 'clock-in' ? 'Clocked In' : 'Clocked Out';
                     const typeColor = entry.type === 'clock-in' ? 'text-green-600' : 'text-red-600';
-
+        
                     entryElement.innerHTML = `
                         <div>
                             <span class="font-medium ${typeColor}">${typeText}</span>
@@ -319,7 +352,7 @@
                     entriesList.appendChild(entryElement);
                 });
             });
-
+        
             document.querySelectorAll('.delete-btn').forEach(button => {
                 button.addEventListener('click', async (e) => {
                     const docId = e.currentTarget.dataset.id;
@@ -333,14 +366,14 @@
                 });
             });
         }
-
+        
         // Handle button clicks
         clockInBtn.addEventListener('click', async () => {
             try {
                 const userTimeEntriesRef = collection(db, `artifacts/${appId}/users/${userId}/time_entries`);
                 await addDoc(userTimeEntriesRef, {
                     type: 'clock-in',
-                    timestamp: new Date(),
+                    timestamp: Timestamp.now(),
                 });
                 showMessage("Clocked in successfully!");
             } catch (error) {
@@ -348,13 +381,13 @@
                 showMessage("Error clocking in.", "error");
             }
         });
-
+        
         clockOutBtn.addEventListener('click', async () => {
             try {
                 const userTimeEntriesRef = collection(db, `artifacts/${appId}/users/${userId}/time_entries`);
                 await addDoc(userTimeEntriesRef, {
                     type: 'clock-out',
-                    timestamp: new Date(),
+                    timestamp: Timestamp.now(),
                 });
                 showMessage("Clocked out successfully!");
             } catch (error) {
@@ -362,7 +395,64 @@
                 showMessage("Error clocking out.", "error");
             }
         });
-        
+
+        logoutBtn.addEventListener('click', async () => {
+            try {
+                await signOut(auth);
+                showMessage("Logged out successfully!");
+            } catch (error) {
+                console.error("Error signing out:", error);
+                showMessage("Error logging out.", "error");
+            }
+        });
+
+        // Handle login/signup form submission
+        authForm.addEventListener('submit', async (e) => {
+            e.preventDefault();
+            const email = emailInput.value;
+            const password = passwordInput.value;
+            const isSignUp = submitBtn.textContent === 'Sign Up';
+
+            if (isSignUp) {
+                try {
+                    await createUserWithEmailAndPassword(auth, email, password);
+                    showMessage("Account created successfully! You are now logged in.");
+                } catch (error) {
+                    console.error("Error signing up:", error);
+                    let errorMessage = "Error creating account. Please try again.";
+                    if (error.code === 'auth/email-already-in-use') {
+                        errorMessage = "That email is already in use. Try signing in.";
+                    } else if (error.code === 'auth/weak-password') {
+                        errorMessage = "Password must be at least 6 characters long.";
+                    }
+                    showMessage(errorMessage, "error");
+                }
+            } else {
+                try {
+                    await signInWithEmailAndPassword(auth, email, password);
+                    showMessage("Signed in successfully!");
+                } catch (error) {
+                    console.error("Error signing in:", error);
+                    let errorMessage = "Error signing in. Please check your credentials.";
+                    if (error.code === 'auth/wrong-password' || error.code === 'auth/user-not-found') {
+                        errorMessage = "Invalid email or password.";
+                    }
+                    showMessage(errorMessage, "error");
+                }
+            }
+        });
+
+        // Toggle between sign-in and sign-up
+        signUpToggleBtn.addEventListener('click', () => {
+            const isSignUp = submitBtn.textContent === 'Sign Up';
+            if (isSignUp) {
+                submitBtn.textContent = 'Sign In';
+                signUpToggleBtn.textContent = 'Need an account? Sign Up';
+            } else {
+                submitBtn.textContent = 'Sign Up';
+                signUpToggleBtn.textContent = 'Already have an account? Sign In';
+            }
+        });
     </script>
 </body>
 </html>
