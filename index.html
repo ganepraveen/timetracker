@@ -104,16 +104,25 @@
 
     <script type="module">
         import { initializeApp } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-app.js";
-        import { getAuth, signInAnonymously, signInWithCustomToken, onAuthStateChanged } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-auth.js";
+        import { getAuth, signInAnonymously, onAuthStateChanged } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-auth.js";
         import { getFirestore, doc, deleteDoc, onSnapshot, collection, addDoc, setLogLevel } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-firestore.js";
 
         // Set Firebase logging level to debug
         setLogLevel('Debug');
         
-        // Use global variables provided by the environment
-        const appId = typeof __app_id !== 'undefined' ? __app_id : 'default-app-id';
-        const firebaseConfig = JSON.parse(typeof __firebase_config !== 'undefined' ? __firebase_config : '{}');
-        const initialAuthToken = typeof __initial_auth_token !== 'undefined' ? __initial_auth_token : null;
+        // --- IMPORTANT: REPLACE WITH YOUR FIREBASE CONFIGURATION ---
+        // Get this from your Firebase project settings in the console.
+        const firebaseConfig = {
+			  apiKey: "AIzaSyAWCdyc1ICphxVin-Ps9-ecU3_kKJFUKHs",
+			  authDomain: "time-tracker-da677.firebaseapp.com",
+			  projectId: "time-tracker-da677",
+			  storageBucket: "time-tracker-da677.firebasestorage.app",
+			  messagingSenderId: "759776821855",
+			  appId: "1:759776821855:web:540422c3118dde613851ea",
+			  measurementId: "G-FZPX1GPGL8"
+			};
+        const appId = firebaseConfig.appId;
+        // -------------------------------------------------------------
         
         const app = initializeApp(firebaseConfig);
         const db = getFirestore(app);
@@ -261,20 +270,11 @@
                 });
 
             } else {
-                if (initialAuthToken) {
-                    try {
-                        await signInWithCustomToken(auth, initialAuthToken);
-                    } catch (error) {
-                        console.error("Error signing in with custom token:", error);
-                        showMessage("Authentication failed. Please try again.", "error");
-                    }
-                } else {
-                    try {
-                        await signInAnonymously(auth);
-                    } catch (error) {
-                        console.error("Error signing in anonymously:", error);
-                        showMessage("Authentication failed. Please try again.", "error");
-                    }
+                try {
+                    await signInAnonymously(auth);
+                } catch (error) {
+                    console.error("Error signing in anonymously:", error);
+                    showMessage("Authentication failed. Please try again.", "error");
                 }
             }
         });
