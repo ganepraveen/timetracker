@@ -368,17 +368,40 @@
         
                 const totalHoursElement = document.createElement('div');
                 totalHoursElement.className = "flex justify-between items-center text-sm font-medium text-gray-600 mb-2";
-                totalHoursElement.innerHTML = `<span>Total Hours:</span> <span class="font-bold text-gray-800">${dayEntry.totalDailyHours.toFixed(2)}</span>`;
+                totalHoursElement.innerHTML = `<span>Total Hours:</span> <span class="font-bold text-gray-800">${dayEntry.totalDailyHours.toFixed(2)} (${(dayEntry.totalDailyHours * 60).toFixed(0)} mins)</span>`;
                 entriesList.appendChild(totalHoursElement);
         
+                let lastClockIn = null;
+                let lastClockInTimestamp = null;
                 dayEntry.entries.forEach(entry => {
+                    if (entry.type === 'clock-in') {
+                        lastClockIn = entry;
+                        lastClockInTimestamp = entry.timestamp.toDate();
+                    } else if (entry.type === 'clock-out' && lastClockIn) {
+                        const durationMilliseconds = entry.timestamp.toDate() - lastClockInTimestamp;
+                        const durationMinutes = durationMilliseconds / (1000 * 60);
+
+                        const sessionElement = document.createElement('div');
+                        sessionElement.className = "bg-blue-50 p-3 rounded-md flex justify-between items-center text-sm mb-2";
+                        sessionElement.innerHTML = `
+                            <div>
+                                <span class="font-medium text-blue-800">Session: ${lastClockInTimestamp.toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit', hour12: true })} - ${entry.timestamp.toDate().toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit', hour12: true })}</span>
+                                <span class="text-gray-500 ml-2">(${durationMinutes.toFixed(0)} mins)</span>
+                            </div>
+                        `;
+                        entriesList.appendChild(sessionElement);
+                        lastClockIn = null; // Reset for the next pair
+                        lastClockInTimestamp = null;
+                    }
+
+                    // Always add the individual log entry
                     const entryElement = document.createElement('div');
                     entryElement.className = "bg-gray-100 p-3 rounded-md flex justify-between items-center text-sm";
                     
                     const time = entry.timestamp.toDate().toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit', hour12: true });
                     const typeText = entry.type === 'clock-in' ? 'Clocked In' : 'Clocked Out';
                     const typeColor = entry.type === 'clock-in' ? 'text-green-600' : 'text-red-600';
-        
+
                     entryElement.innerHTML = `
                         <div>
                             <span class="font-medium ${typeColor}">${typeText}</span>
@@ -392,8 +415,20 @@
                     `;
                     entriesList.appendChild(entryElement);
                 });
+                // Handle last unmatched clock-in
+                if (lastClockIn) {
+                    const ongoingElement = document.createElement('div');
+                    ongoingElement.className = "bg-yellow-50 p-3 rounded-md flex justify-between items-center text-sm mb-2";
+                    ongoingElement.innerHTML = `
+                        <div>
+                            <span class="font-medium text-yellow-800">Session: ${lastClockIn.timestamp.toDate().toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit', hour12: true })} - Ongoing</span>
+                        </div>
+                    `;
+                    entriesList.appendChild(ongoingElement);
+                }
             });
-        
+
+            // Event listeners
             document.querySelectorAll('.delete-btn').forEach(button => {
                 button.addEventListener('click', async (e) => {
                     const docId = e.currentTarget.dataset.id;
