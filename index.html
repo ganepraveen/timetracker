@@ -156,6 +156,7 @@
         let userId = null;
         let allEntries = {}; // Store all entries from Firestore
         let liveTimerInterval = null; // Store the interval ID for the live timer
+        let lastClockInTimestamp = null;
 
         const loadingSpinner = document.getElementById('loadingSpinner');
         const authContainer = document.getElementById('authContainer');
@@ -190,7 +191,7 @@
             dashboardContainer.classList.toggle('hidden', !show);
         }
 
-        function startLiveTimer(lastClockInTimestamp) {
+        function startLiveTimer(initialTodayHours, lastClockInTimestamp) {
             if (liveTimerInterval) {
                 clearInterval(liveTimerInterval);
             }
@@ -198,8 +199,8 @@
                 const now = new Date().getTime();
                 const diffInMilliseconds = now - lastClockInTimestamp;
                 const hours = diffInMilliseconds / (1000 * 60 * 60);
-                todayHoursLiveDisplay.textContent = hours.toFixed(2);
-            }, 1000); // Update every second
+                todayHoursLiveDisplay.textContent = (initialTodayHours + hours).toFixed(2);
+            }, 1000);
         }
 
         function stopLiveTimer() {
@@ -207,7 +208,6 @@
                 clearInterval(liveTimerInterval);
                 liveTimerInterval = null;
             }
-            todayHoursLiveDisplay.textContent = '0.00';
         }
         
         // Gets the date of the most recent Wednesday, including the current day.
@@ -291,7 +291,8 @@
                         if (new Date(date).toLocaleDateString('en-US') === new Date().toLocaleDateString('en-US')) {
                              todayTotalHours = totalDailyHours;
                              if (dayLastStatus === 'clock-in') {
-                                startLiveTimer(dayLastClockIn.getTime());
+                                lastClockInTimestamp = dayLastClockIn.getTime();
+                                startLiveTimer(todayTotalHours, lastClockInTimestamp);
                              } else {
                                 stopLiveTimer();
                                 todayHoursLiveDisplay.textContent = todayTotalHours.toFixed(2);
